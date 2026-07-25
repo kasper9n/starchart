@@ -37,7 +37,7 @@
 			class="bordered owner"
 			type="text"
 			bind:value={owner}
-			placeholder="probablykasper"
+			placeholder="kasper9n"
 			on:keydown={input_keydown}
 			autofocus
 		/>

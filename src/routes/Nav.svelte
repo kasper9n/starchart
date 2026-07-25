@@ -16,7 +16,7 @@
 	</div>
 	<div class="menu">
 		<AccessToken />
-		<a href="https://github.com/probablykasper/starchart" aria-label="GitHub repository">
+		<a href="https://github.com/kasper9n/starchart" aria-label="GitHub repository">
 			<svg
 				height="24"
 				viewBox="-2 -2 28 28"
