@@ -63,19 +63,17 @@ function load_json() {
 			series_local_storage?.expiry > Date.now()
 		) {
 			const json = series_local_storage as Json
-			const line_bases = json.lines.map(
-				(line): LineBase => ({
-					color: line.color,
-					data: line.data.map((utc_timestamp, i): DataPoint => {
-						return {
-							t: utc_timestamp,
-							v: i + 1,
-						}
-					}),
-					final: line.final,
-					name: line.name,
+			const line_bases = json.lines.map((line): LineBase => ({
+				color: line.color,
+				data: line.data.map((utc_timestamp, i): DataPoint => {
+					return {
+						t: utc_timestamp,
+						v: i + 1,
+					}
 				}),
-			)
+				final: line.final,
+				name: line.name,
+			}))
 			return {
 				lines: line_bases,
 				align: json.align,
@@ -399,14 +397,12 @@ function save(chart: ChartData) {
 		return
 	}
 
-	const json_lines = chart.lines.map(
-		(line): LineJson => ({
-			name: line.name,
-			data: line.data.map((data_point) => data_point.t),
-			color: line.color,
-			final: line.final,
-		}),
-	)
+	const json_lines = chart.lines.map((line): LineJson => ({
+		name: line.name,
+		data: line.data.map((data_point) => data_point.t),
+		color: line.color,
+		final: line.final,
+	}))
 	const json: Json = {
 		lines: json_lines,
 		v: json_type_version,
