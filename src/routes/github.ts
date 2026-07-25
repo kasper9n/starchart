@@ -40,6 +40,10 @@ export const errors = {
 	},
 }
 
+errors.push(
+	"Sadly GitHub has restricted star history access to only your own repos :( Add an auth token if you want to see your own repo's star chart.",
+)
+
 const rate_limit_handler: ThrottlingOptions['onRateLimit'] = (
 	retry_after,
 	options,
