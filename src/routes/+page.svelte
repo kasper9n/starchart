@@ -65,18 +65,25 @@
 
 		let cached_stars: Awaited<ReturnType<typeof cached_fetch>> | undefined
 		cached_fetch(owner, repo).then((result) => {
-			cached_stars = result
+			// cached_stars = result
 		})
 
-		let repo_stars = new RepoStars(owner, repo)
+		const repo_stars = new RepoStars(owner, repo)
+		const last_page_result = await repo_stars.get_last_page()
+		if (!last_page_result.data) {
+			errors.push(last_page_result.error)
+			return
+		}
+		const last_page = last_page_result.data.last_page
+
 		let count = 0
 		const line = chart.addLine({
 			name: `${owner}/${repo}`,
 			color: get_next_color_index(),
 			data: [],
 		})
-		let i = 0
-		do {
+
+		for (let page = last_page; page >= 1; page--) {
 			if (cached_stars && cached_stars.stars.length > 0) {
 				line.data = []
 				repo_stars.data_points = cached_stars.stars
@@ -88,21 +95,22 @@
 			if (line.deleted) {
 				return // abort
 			}
-			const { error, stargazers } = await repo_stars.fetch_concurrent()
-			if (!stargazers) {
-				errors.push(error)
+			const star_history_result = await repo_stars.add_page(page)
+			console.log('stargazers result', star_history_result)
+			if (star_history_result.error) {
+				errors.push(star_history_result.error)
 				chart.deleteLine(line)
 				return
 			}
-			console.log('stargazers', stargazers)
 
+			console.log('data_points', repo_stars.data_points)
+			console.log('count', repo_stars.total_count)
 			chart.updateStargazers(line, repo_stars.data_points)
-			if (i === 1) {
-				// for some reason doesn't work on index 0
+			if (page === last_page) {
+				// for some reason doesn't work to begin with
 				chart.resetZoom()
 			}
-			i++
-		} while (repo_stars.request_queue.length > 0)
+		}
 		chart.addFinal(line, {
 			t: Math.floor(new Date().getTime() / 1000) as UTCTimestamp,
 			v: Math.max(repo_stars.total_count, count),

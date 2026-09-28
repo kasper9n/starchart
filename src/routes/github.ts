@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/core'
-import { GraphqlResponseError } from '@octokit/graphql'
+import { RequestError } from 'octokit'
 import { PUBLIC_PAT } from '$env/static/public'
 import { get, writable } from 'svelte/store'
 import { browser } from '$app/environment'
@@ -8,6 +8,7 @@ import { retry } from '@octokit/plugin-retry'
 // @ts-expect-error import missing from bottleneck's package.json
 import BottleneckLight from 'bottleneck/light.js'
 import type { UTCTimestamp } from 'lightweight-charts'
+import type { DataPoint } from './chart'
 const Bottleneck = BottleneckLight as typeof import('bottleneck').default
 
 const loaded_token = browser ? localStorage.getItem('starchart-token') : undefined
@@ -39,10 +40,6 @@ export const errors = {
 		})
 	},
 }
-
-errors.push(
-	"Sadly GitHub has restricted star history access to only your own repos :( Add an auth token if you want to see your own repo's star chart.",
-)
 
 const rate_limit_handler: ThrottlingOptions['onRateLimit'] = (
 	retry_after,
@@ -77,18 +74,16 @@ const octokit = new MyOctokit({
 	},
 })
 
+type StargazersHistory = {
+	week: UTCTimestamp
+	total: number
+	days: [number, number, number, number, number, number, number]
+}[]
+
 export class RepoStars {
-	// Fetching user IDs would add 200ms to the response time, so we use timestamps instead
-	forward_star_times = new Set<string>()
-	backward_star_times = new Set<string>()
-	forward_count = 0
-	backward_count_initialised = false
-	backward_count = -1
-	/** null means no more pages */
-	next_cursor: { forward?: string; backward?: string } | null = {}
 	total_count = 0
-	request_queue: ReturnType<InstanceType<typeof RepoStars>['fetch']>[] = []
-	data_points: { t: UTCTimestamp; v: number }[] = []
+	data_points: DataPoint[] = []
+
 	constructor(
 		public owner: string,
 		public repo: string,
@@ -97,181 +92,105 @@ export class RepoStars {
 		this.repo = repo
 	}
 
-	async fetch_concurrent() {
-		if (this.request_queue.length === 0) {
-			this.request_queue.push(this.fetch('forward'), this.fetch('backward'))
-		}
-		const promise = this.request_queue[0]
-		this.request_queue.shift()
-		const result = await promise
-		if (result?.stargazers && this.next_cursor) {
-			this.request_queue.push(this.fetch(result.stargazers.direction))
-		}
-		return result
-	}
+	// async get_repo_info() {
+	// 	const repo = await octokit.request('GET /repos/{owner}/{repo}', {
+	// 		owner: this.owner,
+	// 		repo: this.repo,
+	// 	})
+	// 	const official_stargazers_count = repo.data.stargazers_count
+	// 	const created_at = new Date(repo.data.created_at).getTime()
+	// 	const weeks_since_creation = Math.floor((Date.now() - created_at) / 1000 / 60 / 60 / 24 / 7)
+	// 	const last_page = Math.ceil(official_stargazers_count / 30)
+	// }
 
-	async fetch(direction: 'forward' | 'backward') {
-		if (this.next_cursor === null) {
-			throw new Error('Unexpected RepoStars.fetch after completion')
-		}
-		// copy to prevent desync
-		const cursor = { ...this.next_cursor }
-		const start_time = Date.now()
-		type Stargazers = {
-			totalCount: number
-			pageInfo: {
-				startCursor: string
-				endCursor: string
-				hasNextPage: boolean
-				hasPreviousPage: boolean
-			}
-			edges: {
-				starredAt: string
-			}[]
-		}
-		const response_promise = octokit.graphql<{
-			repository: {
-				stargazers: Stargazers
-			}
-		}>(
-			`query($owner: String!, $repo: String!, $first: Int, $last: Int, $after: String, $before: String) {
-				repository(owner: $owner, name: $repo) {
-					stargazers(first: $first, last: $last, after: $after, before: $before, orderBy: {field: STARRED_AT, direction: ASC}) {
-						totalCount
-						pageInfo {
-							startCursor
-							endCursor
-							hasNextPage
-							hasPreviousPage
-						}
-						edges {
-							starredAt
-						}
-					}
-				}
-				}`,
-			{
+	async get_page(page_n: number) {
+		const history_result = await octokit
+			.request('GET /repos/{owner}/{repo}/stargazers/history', {
 				owner: this.owner,
 				repo: this.repo,
-				first: direction === 'forward' ? 100 : undefined,
-				after: direction === 'forward' ? cursor.forward : undefined,
-				last: direction === 'backward' ? 100 : undefined,
-				before: direction === 'backward' ? cursor.backward : undefined,
-			},
-		)
-
-		const response = await response_promise.catch((error) => {
-			if (error instanceof GraphqlResponseError && error.errors) {
-				return {
-					error: error.errors.map((error) => error.message).join('/n'),
+				per_page: 30,
+				page: page_n,
+				headers: {
+					'X-GitHub-Api-Version': '2026-03-10',
+				},
+			})
+			.catch((error) => {
+				if (error instanceof RequestError) {
+					return {
+						error: error.message,
+					}
+				} else if (error instanceof Error) {
+					return { error: `${error.name}: ${error.message}` }
+				} else {
+					return { error: "Couldn't fetch stargazers" }
 				}
-			} else if (error instanceof Error) {
-				return { error: `${error.name}: ${error.message}` }
-			} else {
-				return { error: "Couldn't fetch stargazers" }
-			}
-		})
-
-		console.log('response took', Date.now() - start_time, response)
-		if ('error' in response) {
-			return { error: response.error, stargazers: undefined }
+			})
+		if ('error' in history_result) {
+			return { error: history_result.error }
 		}
-
-		// const stargazers_forwards = response.repository.stargazers_forwards
-		// const stargazers_backwards = response.repository.stargazers_backwards
-
-		// if (!this.backwards_count_initialised) {
-		// 	this.backwards_count = stargazers_backwards.totalCount
-		// 	this.backwards_count_initialised = true
-		// }
-
-		// const star_times_forwards = stargazers_forwards.edges
-		// 	.filter((edge) => !this.user_ids.has(edge.user.id))
-		// 	.map((edge) => {
-		// 		this.user_ids.add(edge.user.id)
-		// 		this.forwards_count++
-		// 		return {
-		// 			t: Math.floor(new Date(edge.starredAt).getTime() / 1000) as UTCTimestamp,
-		// 			v: this.forwards_count,
-		// 		}
-		// 	})
-
-		// const star_times_backwards = stargazers_backwards.edges
-		// 	.filter((edge) => !this.user_ids.has(edge.user.id))
-		// 	.map((edge) => {
-		// 		this.user_ids.add(edge.user.id)
-		// 		this.backwards_count!--
-		// 		return {
-		// 			t: Math.floor(new Date(edge.starredAt).getTime() / 1000) as UTCTimestamp,
-		// 			v: this.backwards_count!,
-		// 		}
-		// 	})
-		const stargazers = response.repository.stargazers
-
-		if (!this.backward_count_initialised) {
-			this.backward_count = stargazers.totalCount + 1
-			this.backward_count_initialised = true
-		}
-
-		const filtered_stargazers = stargazers.edges.filter((edge) => {
-			// Stop once we reach overlapping data
-			if (direction === 'forward') {
-				return !this.backward_star_times.has(edge.starredAt)
-			} else {
-				return !this.forward_star_times.has(edge.starredAt)
-			}
-		})
-		if (direction === 'backward') {
-			filtered_stargazers.reverse() // correctly handle backward_count--
-		}
-		const star_times = filtered_stargazers.map((edge) => {
-			if (direction === 'forward') {
-				this.forward_star_times.add(edge.starredAt)
-				this.forward_count++
-			} else {
-				this.backward_star_times.add(edge.starredAt)
-				this.backward_count--
-			}
-			return {
-				t: Math.floor(new Date(edge.starredAt).getTime() / 1000) as UTCTimestamp,
-				v: direction === 'forward' ? this.forward_count : this.backward_count!,
-			}
-		})
-		if (direction === 'backward') {
-			star_times.reverse() // reset order
-		}
-		const has_overlapped = star_times.length !== stargazers.edges.length
-
-		this.data_points.push(...star_times)
-		this.data_points.sort((a, b) => a.t - b.t)
-
-		if (has_overlapped) {
-			this.next_cursor = null
-		} else if (direction === 'forward' && stargazers.pageInfo.hasNextPage) {
-			this.next_cursor = {
-				forward: stargazers.pageInfo.endCursor,
-				backward: this.next_cursor.backward,
-			}
-		} else if (direction === 'backward' && stargazers.pageInfo.hasPreviousPage) {
-			this.next_cursor = {
-				forward: this.next_cursor.forward,
-				backward: stargazers.pageInfo.startCursor,
-			}
-		} else {
-			this.next_cursor = null
-		}
-
-		this.total_count = Math.max(
-			stargazers.totalCount,
-			this.forward_star_times.size + this.backward_star_times.size,
-		)
-
+		const data: StargazersHistory = history_result.data
 		return {
-			error: undefined,
-			stargazers: {
-				direction,
-				star_times_data: star_times,
-			},
+			headers: history_result.headers,
+			data,
 		}
+	}
+
+	async get_last_page() {
+		const star_history = await this.get_page(100)
+		if (!star_history.data) {
+			return { error: star_history.error }
+		}
+		const link_header = star_history.headers.link ?? ''
+		// regex from https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api?apiVersion=2026-03-10
+		const last_pattern = /<([^<>]+)>; rel="last"/
+		const last_url_str = link_header.match(last_pattern)?.[1]
+		if (!last_url_str) {
+			if (star_history.data.length > 0) {
+				return { data: { last_page: 100 } }
+			} else {
+				return { error: 'Unexpected missing last stargazers page link' }
+			}
+		}
+		let last_url: URL
+		try {
+			last_url = new URL(last_url_str)
+		} catch (_) {
+			return { error: 'Invalid last page URL: ' + last_url_str }
+		}
+		const last_page = Number(last_url.searchParams.get('page'))
+		if (!Number.isFinite(last_page)) {
+			return { error: 'Unexpected missing last link page param' }
+		}
+		return { data: { last_page } }
+	}
+
+	async add_page(page: number) {
+		const star_history = await this.get_page(page)
+		console.log('add_page history', star_history)
+		if (!star_history.data) {
+			return { error: star_history.error }
+		}
+		star_history.data.reverse()
+		for (const week of star_history.data) {
+			week.days.reverse()
+			for (const [i, day] of week.days.entries()) {
+				this.total_count += day
+				console.log(
+					't',
+					week.week + i * 86400,
+					'week',
+					week.week,
+					'total_count',
+					this.total_count,
+					'i',
+					i,
+				)
+				this.data_points.push({
+					t: (week.week + i * 86400) as UTCTimestamp,
+					v: this.total_count,
+				})
+			}
+		}
+		return { error: null }
 	}
 }

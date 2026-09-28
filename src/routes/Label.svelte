@@ -32,19 +32,20 @@
 >
 	<!-- Hide when 0 because it may load from cache server -->
 	{#if !line.final && line.data.length > 0}
+		{@const latest = line.data[line.data.length - 1]}
 		<div class="counter-container">
 			<div class="counter-bg">
-				{line.data.length}
+				{latest.v}
 			</div>
 		</div>
 		<div class="counter-container">
 			<div class="counter">
-				<span class="counter-sizing-text">{line.data.length}</span>
+				<span class="counter-sizing-text">{latest.v}</span>
 				{#key line.data.length}
 					<span
 						class="counter-text"
 						in:fly={{ duration: 300, y: 10 }}
-						out:fly={{ duration: 300, y: -10 }}>{line.data.length}</span
+						out:fly={{ duration: 300, y: -10 }}>{latest.v}</span
 					>
 				{/key}
 			</div>
