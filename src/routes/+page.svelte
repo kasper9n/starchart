@@ -32,6 +32,12 @@
 				}
 				const date_components = t.split('-')
 				const date = new Date(date_components.reverse().join('-'))
+				if (accumulated === cached_accumulated) {
+					stars.push({
+						t: (date.getTime() / 1000) as UTCTimestamp,
+						v: accumulated,
+					})
+				}
 				while (accumulated < cached_accumulated) {
 					accumulated++
 					stars.push({
@@ -63,7 +69,6 @@
 			}
 		}
 
-		let count = 0
 		const line_result = chart.addLine({
 			name: `${owner}/${repo}`,
 			color: get_next_color_index(),
@@ -77,7 +82,7 @@
 
 		let cached_stars: Awaited<ReturnType<typeof cached_fetch>> | undefined
 		cached_fetch(owner, repo).then((result) => {
-			// cached_stars = result
+			cached_stars = result
 		})
 
 		const repo_stars = new RepoStars(owner, repo)
