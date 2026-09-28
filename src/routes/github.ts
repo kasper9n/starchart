@@ -180,6 +180,10 @@ export class RepoStars {
 				if (t > now) {
 					continue
 				}
+				const last_added = this.data_points[this.data_points.length - 1]
+				if (last_added && last_added.t !== t - 86400) {
+					return { error: `Unexpected gap between days: ${t - last_added.t}` }
+				}
 				this.data_points.push({
 					t,
 					v: this.total_count,
