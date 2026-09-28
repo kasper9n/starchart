@@ -166,18 +166,24 @@ export class RepoStars {
 
 	async add_page(page: number) {
 		const star_history = await this.get_page(page)
-		console.log('add_page history', star_history)
 		if (!star_history.data) {
 			return { error: star_history.error }
 		}
 		star_history.data.reverse()
-		const now = Math.floor(Date.now() / 1000) as UTCTimestamp
+
+		const today_start_date = new Date()
+		today_start_date.setUTCHours(0)
+		today_start_date.setUTCMinutes(0)
+		today_start_date.setUTCSeconds(0)
+		today_start_date.setUTCMilliseconds(0)
+		const today_start_t = (today_start_date.getTime() / 1000) as UTCTimestamp
+
 		for (const week of star_history.data) {
 			week.days.reverse()
 			for (const [i, day] of week.days.entries()) {
 				this.total_count += day
 				const t = (week.week + i * 86400) as UTCTimestamp
-				if (t > now) {
+				if (t >= today_start_t) {
 					continue
 				}
 				const last_added = this.data_points[this.data_points.length - 1]
