@@ -64,11 +64,16 @@
 		}
 
 		let count = 0
-		const line = chart.addLine({
+		const line_result = chart.addLine({
 			name: `${owner}/${repo}`,
 			color: get_next_color_index(),
 			data: [],
 		})
+		if (!line_result.line) {
+			errors.push(line_result.error)
+			return
+		}
+		const line = line_result.line
 
 		let cached_stars: Awaited<ReturnType<typeof cached_fetch>> | undefined
 		cached_fetch(owner, repo).then((result) => {

@@ -13,7 +13,6 @@ import {
 } from 'lightweight-charts'
 import { writable } from 'svelte/store'
 import { bottom_colors, hex_colors, top_colors } from './color'
-import { errors } from './github'
 
 export type DataPoint = { t: UTCTimestamp; v: number }
 type LineBase = {
@@ -219,8 +218,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 				try {
 					series.setData(chart_series)
 				} catch (err) {
-					errors.push(String(err))
-					return
+					return { error: String(err) }
 				}
 			}
 			chart.lines.push(line)
@@ -229,7 +227,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 				store.resetZoom()
 			}
 			set(chart)
-			return line
+			return { line }
 		},
 
 		alignLines() {
