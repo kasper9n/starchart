@@ -57,22 +57,31 @@ const rate_limit_handler: ThrottlingOptions['onRateLimit'] = (
 }
 
 const MyOctokit = Octokit.plugin(throttling, retry)
-const octokit = new MyOctokit({
-	auth: get(token) || PUBLIC_PAT,
-	throttle: {
-		onRateLimit: rate_limit_handler,
-		onSecondaryRateLimit: rate_limit_handler,
-		// The `write` group is what @octokit/plugin-throttling uses for the GraphQL API
-		// This property is undocumented, but it is typed at least
-		write: new Bottleneck.Group({
-			maxConcurrent: 10,
-			minTime: 100,
-			// from @octokit/plugin-throttling source code:
-			id: 'octokit-write',
-			timeout: 1000 * 60 * 2,
-		}),
-	},
-})
+
+let octokit = create_octokit()
+function create_octokit() {
+	return new MyOctokit({
+		auth: get(token) || PUBLIC_PAT,
+		throttle: {
+			onRateLimit: rate_limit_handler,
+			onSecondaryRateLimit: rate_limit_handler,
+			// The `write` group is what @octokit/plugin-throttling uses for the GraphQL API
+			// This property is undocumented, but it is typed at least
+			write: new Bottleneck.Group({
+				maxConcurrent: 10,
+				minTime: 100,
+				// from @octokit/plugin-throttling source code:
+				id: 'octokit-write',
+				timeout: 1000 * 60 * 2,
+			}),
+		},
+	})
+}
+if (browser) {
+	token.subscribe(() => {
+		octokit = create_octokit()
+	})
+}
 
 type StargazersHistory = {
 	week: UTCTimestamp
@@ -91,17 +100,6 @@ export class RepoStars {
 		this.owner = owner
 		this.repo = repo
 	}
-
-	// async get_repo_info() {
-	// 	const repo = await octokit.request('GET /repos/{owner}/{repo}', {
-	// 		owner: this.owner,
-	// 		repo: this.repo,
-	// 	})
-	// 	const official_stargazers_count = repo.data.stargazers_count
-	// 	const created_at = new Date(repo.data.created_at).getTime()
-	// 	const weeks_since_creation = Math.floor((Date.now() - created_at) / 1000 / 60 / 60 / 24 / 7)
-	// 	const last_page = Math.ceil(official_stargazers_count / 30)
-	// }
 
 	async get_page(page_n: number) {
 		const history_result = await octokit
