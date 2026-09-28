@@ -31,7 +31,7 @@
 	in:scale={{ duration: 200, easing: cubicOut, start: 0.75, opacity: 0 }}
 >
 	<!-- Hide when 0 because it may load from cache server -->
-	{#if !line.final && line.data.length > 0}
+	{#if !line.loaded && line.data.length > 0}
 		{@const latest = line.data[line.data.length - 1]}
 		<div class="counter-container">
 			<div class="counter-bg">
@@ -63,7 +63,7 @@
 		>
 			{line.name}
 		</button>
-		<button type="button" class="x" class:loading={!line.final} on:click={on_delete} tabindex="-1">
+		<button type="button" class="x" class:loading={!line.loaded} on:click={on_delete} tabindex="-1">
 			<svg
 				fill="currentColor"
 				width="18"
@@ -78,7 +78,7 @@
 					d="m12 10.93 5.719-5.72c.146-.146.339-.219.531-.219.404 0 .75.324.75.749 0 .193-.073.385-.219.532l-5.72 5.719 5.719 5.719c.147.147.22.339.22.531 0 .427-.349.75-.75.75-.192 0-.385-.073-.531-.219l-5.719-5.719-5.719 5.719c-.146.146-.339.219-.531.219-.401 0-.75-.323-.75-.75 0-.192.073-.384.22-.531l5.719-5.719-5.72-5.719c-.146-.147-.219-.339-.219-.532 0-.425.346-.749.75-.749.192 0 .385.073.531.219z"
 				/></svg
 			>
-			{#if !line.final}
+			{#if !line.loaded}
 				<div class="spinner" transition:fade={{ duration: 150 }}>
 					<div class="circle"></div>
 				</div>

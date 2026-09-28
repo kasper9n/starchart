@@ -102,29 +102,19 @@
 				return // abort
 			}
 			const star_history_result = await repo_stars.add_page(page)
-			console.log('stargazers result', star_history_result)
 			if (star_history_result.error) {
 				errors.push(star_history_result.error)
 				chart.deleteLine(line)
 				return
 			}
 
-			console.log('data_points', repo_stars.data_points)
-			console.log('count', repo_stars.total_count)
 			chart.updateStargazers(line, repo_stars.data_points)
 			if (page === last_page) {
 				// for some reason doesn't work to begin with
 				chart.resetZoom()
 			}
 		}
-		console.log('add final', {
-			t: Math.floor(new Date().getTime() / 1000) as UTCTimestamp,
-			v: Math.max(repo_stars.total_count, count),
-		})
-		chart.addFinal(line, {
-			t: Math.floor(new Date().getTime() / 1000) as UTCTimestamp,
-			v: Math.max(repo_stars.total_count, count),
-		})
+		line.loaded = true
 		chart.save()
 	}
 

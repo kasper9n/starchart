@@ -19,8 +19,7 @@ type LineBase = {
 	name: string
 	data: DataPoint[]
 	color: number
-	/** Loading if absent */
-	final?: DataPoint
+	loaded?: true
 }
 export interface Line extends LineBase {
 	instance: ISeriesApi<'Area'>
@@ -31,15 +30,15 @@ export interface Line extends LineBase {
 
 type LineJson = {
 	name: string
-	/** Star count = index + 1 */
-	data: UTCTimestamp[]
+	/** Day of the first datapoint */
+	first_t: UTCTimestamp
+	/** How many stars each day has */
+	days: number[]
 	color: number
-	/** Loading if absent */
-	final?: DataPoint
 }
 
 /** Used to invalidate old localStorage */
-const json_type_version = 4
+const json_type_version = 5
 type Json = {
 	lines: LineJson[]
 	align: boolean
@@ -63,17 +62,19 @@ function load_json() {
 			series_local_storage?.expiry > Date.now()
 		) {
 			const json = series_local_storage as Json
-			const line_bases = json.lines.map((line): LineBase => ({
-				color: line.color,
-				data: line.data.map((utc_timestamp, i): DataPoint => {
-					return {
-						t: utc_timestamp,
-						v: i + 1,
-					}
-				}),
-				final: line.final,
-				name: line.name,
-			}))
+			const line_bases = json.lines.map((line): LineBase => {
+				return {
+					color: line.color,
+					data: line.days.map((v, i): DataPoint => {
+						return {
+							t: (line.first_t + i * 86400) as UTCTimestamp,
+							v,
+						}
+					}),
+					name: line.name,
+					loaded: true,
+				}
+			})
 			return {
 				lines: line_bases,
 				align: json.align,
@@ -83,7 +84,7 @@ function load_json() {
 			localStorage.removeItem('starchart-series')
 		}
 	} catch (e) {
-		console.log('Could not load lines', e)
+		console.error('Could not load lines', e)
 	}
 	return {
 		lines: [],
@@ -209,7 +210,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 				deleted: false,
 			}
 			if (new_line.data.length >= 1) {
-				let chart_series = to_chart_series(new_line.data, new_line.final)
+				let chart_series = to_chart_series(new_line.data)
 
 				if (chart.align) {
 					chart_series = align_chart_series(chart_series)
@@ -236,7 +237,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 				if (line.deleted || line.data.length === 0) {
 					continue
 				}
-				const chart_series = to_chart_series(line.data, line.final)
+				const chart_series = to_chart_series(line.data)
 				const aligned_chart_series = align_chart_series(chart_series)
 				line.instance.setData(aligned_chart_series)
 				line.lastChartSeriesDate = aligned_chart_series[aligned_chart_series.length - 1].time
@@ -253,7 +254,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 				if (line.deleted || line.data.length === 0) {
 					continue
 				}
-				const chart_series = to_chart_series(line.data, line.final)
+				const chart_series = to_chart_series(line.data)
 				line.instance.setData(chart_series)
 				line.lastChartSeriesDate = chart_series[chart_series.length - 1].time
 			}
@@ -283,7 +284,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 			if (line.data.length === 0) {
 				return
 			}
-			const chart_series = to_chart_series(line.data, line.final)
+			const chart_series = to_chart_series(line.data)
 			const fresh = line.data.length === 0
 			if (fresh) {
 				const aligned_chart_series = align_chart_series(chart_series)
@@ -308,7 +309,7 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 			} else if (chart.align) {
 				return this._appendAlignedChartData(line)
 			}
-			const chart_series = to_chart_series(line.data, line.final)
+			const chart_series = to_chart_series(line.data)
 			line.lastChartSeriesDate = chart_series[chart_series.length - 1].time
 			const fresh = line.data.length === 0
 			if (fresh) {
@@ -326,15 +327,6 @@ export function new_chart(container: HTMLElement, options: DeepPartial<ChartOpti
 				update_filler(chart.lines)
 				store.resetZoom()
 			}
-			set(chart)
-		},
-
-		addFinal(line: Line, data: DataPoint) {
-			// Don't add it to line.data, that would mess up localStorage.
-			// Instead, we add it directly to the chart later
-			store._appendChartData(line)
-			line.final = data
-			update_filler(chart.lines)
 			set(chart)
 		},
 
@@ -403,9 +395,9 @@ function save(chart: ChartData) {
 
 	const json_lines = chart.lines.map((line): LineJson => ({
 		name: line.name,
-		data: line.data.map((data_point) => data_point.t),
+		first_t: line.data[0].t,
+		days: line.data.map((data_point) => data_point.v),
 		color: line.color,
-		final: line.final,
 	}))
 	const json: Json = {
 		lines: json_lines,
@@ -425,16 +417,12 @@ type ChartSeries = {
 	}
 	value: number
 }
-function to_chart_series(data: DataPoint[], final?: DataPoint): ChartSeries[] {
+function to_chart_series(data: DataPoint[]): ChartSeries[] {
 	const data_points: { date: Date; value: number }[] = []
 	data.sort((a, b) => a.t - b.t)
 
-	for (let i = 0; i < data.length + Number(!!final); i++) {
-		let data_point = data[i]
-		if (i === data.length) {
-			if (!final) throw new Error('final is undefined')
-			data_point = final
-		}
+	for (let i = 0; i < data.length; i++) {
+		const data_point = data[i]
 		const dt = new Date(data_point.t * 1000)
 		const date = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
 
