@@ -117,6 +117,10 @@
 				chart.resetZoom()
 			}
 		}
+		console.log('add final', {
+			t: Math.floor(new Date().getTime() / 1000) as UTCTimestamp,
+			v: Math.max(repo_stars.total_count, count),
+		})
 		chart.addFinal(line, {
 			t: Math.floor(new Date().getTime() / 1000) as UTCTimestamp,
 			v: Math.max(repo_stars.total_count, count),
