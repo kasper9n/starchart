@@ -171,20 +171,14 @@ export class RepoStars {
 			return { error: star_history.error }
 		}
 		star_history.data.reverse()
+		const now = (Date.now() / 1000) as UTCTimestamp
 		for (const week of star_history.data) {
 			week.days.reverse()
 			for (const [i, day] of week.days.entries()) {
 				this.total_count += day
-				console.log(
-					't',
-					week.week + i * 86400,
-					'week',
-					week.week,
-					'total_count',
-					this.total_count,
-					'i',
-					i,
-				)
+				if (week.week > now) {
+					continue
+				}
 				this.data_points.push({
 					t: (week.week + i * 86400) as UTCTimestamp,
 					v: this.total_count,
