@@ -63,6 +63,13 @@
 			}
 		}
 
+		let count = 0
+		const line = chart.addLine({
+			name: `${owner}/${repo}`,
+			color: get_next_color_index(),
+			data: [],
+		})
+
 		let cached_stars: Awaited<ReturnType<typeof cached_fetch>> | undefined
 		cached_fetch(owner, repo).then((result) => {
 			// cached_stars = result
@@ -72,16 +79,10 @@
 		const last_page_result = await repo_stars.get_last_page()
 		if (!last_page_result.data) {
 			errors.push(last_page_result.error)
+			chart.deleteLine(line)
 			return
 		}
 		const last_page = last_page_result.data.last_page
-
-		let count = 0
-		const line = chart.addLine({
-			name: `${owner}/${repo}`,
-			color: get_next_color_index(),
-			data: [],
-		})
 
 		for (let page = last_page; page >= 1; page--) {
 			if (cached_stars && cached_stars.stars.length > 0) {
